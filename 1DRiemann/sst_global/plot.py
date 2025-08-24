@@ -109,7 +109,7 @@ def read_csv_data(filename):
     return data, header
 
 
-filepath = './predict/predictions.npy'
+filepath = './predict/predictions_lbfgs.npy'
 data = np.load(filepath)
 
 filename = "time_step_100.csv" 
@@ -144,6 +144,7 @@ y = data[:,1].reshape(101,101)
 rho = data[:,2].reshape(101,101)
 u = data[:,4].reshape(101,101) 
 p = data[:,3].reshape(101,101) 
+#mu = data[:,5].reshape(101,101)**2
 
 
 
@@ -215,6 +216,7 @@ plt.ylabel('T (Time)')
 # plt.title('Density Contour', fontsize=14, weight='bold')
 plt.savefig('contour3.png', dpi=200, bbox_inches='tight')
 plt.show()
+
 
 plt.rcParams['font.family'] = 'serif'  # Set to desired font, e.g., 'serif', 'Times New Roman'
 plt.rcParams['font.size'] = 20         # Set global font size

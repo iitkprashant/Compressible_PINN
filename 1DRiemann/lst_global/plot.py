@@ -9,7 +9,7 @@ def read_csv_data(filename):
         data = np.array([list(map(float, row)) for row in csv_reader])
     return data, header
 
-filepath = './predict/predictions.npy'
+filepath = './predict/predictions_lbfgs.npy'
 data = np.load(filepath)
 
 filename = "time_step_162.csv" 
