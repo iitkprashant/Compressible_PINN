@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 from torch.autograd import grad
 from scipy.optimize import minimize
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, TensorDataset
 import numpy as np
 import torch.nn.functional as F
 import torch.nn.init as init
@@ -95,79 +95,8 @@ class PolygonBoundaryPoints:
         plt.legend()
         plt.savefig('test.png')
         plt.close()
-
-class ResidualDataset(Dataset):
-    def __init__(self, res_pts):
-        self.res = res_pts
-        self.n_residuals = self.res.shape[0]
-
-    def __getitem__(self, index):
-        return self.res[index]
-
-    def __len__(self):
-        return self.n_residuals
-
-
-
-class EulerViscousTime1D:
-    def __init__(self, model, device='cpu', value=-5.0):
-        self.model = model
-        self.device = device
-#        self.raw_mu = torch.nn.Parameter(torch.tensor([value], requires_grad=True, device=self.device, dtype=torch.float32))
-
-
-    def compute_gradients(self, outputs, inputs):
-        return autograd.grad(outputs=outputs, inputs=inputs,
-                             grad_outputs=torch.ones_like(outputs),
-                             create_graph=True, retain_graph=True)[0]
-    
-    def compute_loss(self, x_train):
-        self.x_train = torch.tensor(x_train, device=self.device, dtype=torch.float32)
-        self.gamma = torch.tensor(1.4, device=self.device, dtype=torch.float32)  # Specific heat ratio
-
-        self.x_train.requires_grad = True
-
-        output = self.model(self.x_train)
-        rho, p, u, self.mu = output[:, 0], output[:, 1], output[:, 2], output[:, 3]**2
-
-        E = p/(self.gamma - 1) + 0.5*rho*(u**2)
-        s = torch.log(p/ rho**(self.gamma))
-
-        U1 = rho
-        U2 = rho*u
-        U3 = E
-        u_x = self.compute_gradients(u, self.x_train)[:,0]
         
-        U1_x = self.compute_gradients(U1, self.x_train)[:,0]
-        U2_x = self.compute_gradients(U2, self.x_train)[:,0]
-        U3_x = self.compute_gradients(U3, self.x_train)[:,0]
         
-        U1_xx = self.compute_gradients(U1_x, self.x_train)[:,0]
-        U2_xx = self.compute_gradients(U2_x, self.x_train)[:,0]
-        U3_xx = self.compute_gradients(U3_x, self.x_train)[:,0]
-        
-        U1_t = self.compute_gradients(U1, self.x_train)[:,1]
-        U2_t = self.compute_gradients(U2, self.x_train)[:,1]
-        U3_t = self.compute_gradients(U3, self.x_train)[:,1]
-
-        f1 = rho*u
-        f2 = rho * u**2 + p
-        f3 = u*(E + p)
-
-        f1_x = self.compute_gradients(f1, self.x_train)[:,0]
-        f2_x = self.compute_gradients(f2, self.x_train)[:,0]
-        f3_x = self.compute_gradients(f3, self.x_train)[:,0]
-        
-        self.lam = 1/(0.1*(torch.abs(u_x) - u_x) + 1)
-        #self.lam = torch.abs(u_x)
-
-        r1 = U1_t + f1_x - self.mu * U1_xx
-        r2 = U2_t + f2_x - self.mu * U2_xx
-        r3 = U3_t + f3_x - self.mu * U3_xx
-
-        return r1, r2, r3
-
-
 class FNN(nn.Module):
     def __init__(self, inputs, layers, init_type='xavier', output2='exp'):
         super(FNN, self).__init__()
@@ -216,9 +145,8 @@ class FNN(nn.Module):
             x = torch.matmul(x, weight) + bias
             if i < len(self.hidden_weights) - 1:  # Apply activation for hidden layers
                 x = torch.tanh(x)
-
-        # Apply transformations to outputs
-        x[:, 0:2] = torch.exp(x[:, 0:2]) # Exponential transformation for the first output
+        if self.output2 == 'exp':
+            x[:, 0:2] = torch.exp(x[:, 0:2]) # Exponential transformation for the first output
         
         return x
 
@@ -246,166 +174,280 @@ class FNN(nn.Module):
         print("Model's state_dict:")
         for name, param in self.state_dict().items():
             print(name, "\t", param.size())
-
-device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(device)
-
-Xmin, Xmax = 0.0, 1.0
-Tmin, Tmax = 0.0, 0.2
-
-
-
-gamma = 1.4
-r_left_inf = 1.0
-p_left_inf = 1.0
-u_left_inf = 0.0
-
-r_right_inf = 0.125
-p_right_inf = 0.1
-u_right_inf = 0.0
-
-vertices = [(Xmin, Tmin), (Xmax, Tmin), (Xmax, Tmax), (Xmin, Tmax)]  
-polygon = PolygonBoundaryPoints(vertices, num_boundary_points=500)
-
-boundary_points, edge_points_list = polygon.generate_points_on_edges()
-interior_points = polygon.generate_random_points_inside(20000)
-
-inputs = torch.tensor(interior_points, dtype=torch.float32, device=device)
-layers=[2]+5*[192]+[4]
-
-model = FNN(inputs, layers, init_type='xavier')
-model.to(device)
-
-losses=[]
-
-data= {"Epoch":[],
-        "Cont":[],
-        "Mom_x":[],
-        "Energy":[],
-        "entropy":[],
-        "Initialleft":[],
-        "Initialright":[],
-        "mu":[]
-        }
-
-filename  = 'loss.json'
-
-class Loss:
-    def __init__(self, model, device='cpu'):
-        self.model = model
-        self.device = device
-        self.loss_fn = nn.MSELoss()  # renamed to avoid potential shadowing
-
-    def LossPDE(self, coords, pde):
-        self.pde = pde
-        self.coords = torch.tensor(coords, dtype=torch.float32, device=self.device).clone().detach().requires_grad_(True)
-        
-        e1, e2, e3= self.pde.compute_loss(self.coords)
-
-        loss = (self.loss_fn(e1 * self.pde.lam, torch.zeros_like(e1)),
-                 self.loss_fn(e2 * self.pde.lam, torch.zeros_like(e2)), 
-                 self.loss_fn(e3 * self.pde.lam, torch.zeros_like(e3)))
-
-        mse = (self.loss_fn(e1 * self.pde.lam, torch.zeros_like(e1)) + 
-               self.loss_fn(e2 * self.pde.lam, torch.zeros_like(e2)) + 
-               self.loss_fn(e3 * self.pde.lam, torch.zeros_like(e3)))
-
-        return loss, mse
-
-    def LossInitial(self, coords, target):
-        self.coords = torch.tensor(coords, dtype=torch.float32, device=self.device).clone().detach().requires_grad_(True)
-        self.target = torch.tensor(target, dtype=torch.float32, device=self.device).clone().detach()
-
-        output = self.model(self.coords)
-
-        mse = self.loss_fn(self.target[:, 0], output[:,0]) + self.loss_fn(self.target[:, 1], output[:,1]) + self.loss_fn(self.target[:, 2], output[:,2])
-        return mse
-    
-loss = Loss(model, device=device)
-ns = EulerViscousTime1D(model, device=device, value = -5.0)
-
-
-initial = edge_points_list[0]
-
-
-
-def train(epochs=10000, lr = 0.001):
-
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-    lambda1 = lambda epoch: 10**(-(2/epochs)*epoch)
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda1)
-    
-    
-    for epoch in range(epochs):
-
-        boundary_points, edge_list = polygon.generate_points_on_edges()
-        collocation_points = polygon.generate_random_points_inside(20000)
-
-        initial = edge_list[0]
-        left = initial[initial[:,0] < 0.5]
-        right = initial[initial[:,0] > 0.5]
-        
-        dataset = ResidualDataset(collocation_points)
-        dataloader_ = DataLoader(dataset=dataset, batch_size=10000, shuffle=True, pin_memory=True)
-        for residuals in dataloader_:
-
-            left_rho=r_left_inf*np.ones_like(left[:,0]).reshape(-1,1)
-            left_p = p_left_inf*np.ones_like(left[:,0]).reshape(-1,1)
-            left_u = u_left_inf*np.ones_like(left[:,1]).reshape(-1,1)
-           
-            right_rho=r_right_inf*np.ones_like(right[:,0]).reshape(-1,1)
-            right_p = p_right_inf*np.ones_like(right[:,0]).reshape(-1,1)
-            right_u = u_right_inf*np.ones_like(right[:,1]).reshape(-1,1)
-
-            left_condition = np.concatenate((left_rho,left_p, left_u),axis=1)
-            right_condition = np.concatenate((right_rho,right_p, right_u),axis=1)
-
-            pde_list, pde_mse = loss.LossPDE(residuals, ns)
-            mse_left = loss.LossInitial(left, left_condition)
-            mse_right = loss.LossInitial(right, right_condition)
-
-            total = ( (pde_list[0] + pde_list[1] + pde_list[2]) + 10*(mse_left + mse_right)) + 0.1*torch.mean(ns.mu)
             
-            optimizer.zero_grad()
-            total.backward()
-            optimizer.step()
+
+
+
+class PINN(nn.Module):
+    def __init__(self, model, model2, device='cpu'):
+        super().__init__()
+        self.model = model
+        self.model2 = model2
+        self.device = device
+        self.gamma = torch.tensor(1.4, device=device, dtype=torch.float32)  # Specific heat ratio
+        self.optimizer = optim.Adam( list(model.parameters()) + list(model2.parameters()), lr=0.001)
+        self.optimizer2 = torch.optim.LBFGS( list(model.parameters()) + list(model2.parameters()), max_iter=30, tolerance_grad=1e-8, line_search_fn='strong_wolfe')
+        
+        self.data={"Epoch":[],
+                "Cont":[],
+                "Mom_x":[],
+                "Energy":[],
+                "left":[],
+                "right":[],
+                "mu":[]
+                }
+    
+    def compute_gradients(self, outputs, inputs):
+        return autograd.grad(outputs=outputs, inputs=inputs,
+                             grad_outputs=torch.ones_like(outputs),
+                             create_graph=True, retain_graph=True)[0]
+        
+    def _physics_loss(self, x_train):
+        # self.x_train = torch.tensor(x_train, device=self.device, dtype=torch.float32)
+        x_train.requires_grad = True
+
+        output = self.model(x_train)
+        rho, p, u = output[:, 0], output[:, 1], output[:, 2]
+        self.mu = 0.01*self.model2(x_train)**2
+        
+        E = p/(self.gamma - 1) + 0.5*rho*(u**2)
+        s = torch.log(p/ rho**(self.gamma))
+
+        U1 = rho
+        U2 = rho*u
+        U3 = E
+        u_x = self.compute_gradients(u, x_train)[:,0]
+        
+        U1_x = self.compute_gradients(U1, x_train)[:,0]
+        U2_x = self.compute_gradients(U2, x_train)[:,0]
+        U3_x = self.compute_gradients(U3, x_train)[:,0]
+        
+        U1_xx = self.compute_gradients(U1_x, x_train)[:,0]
+        U2_xx = self.compute_gradients(U2_x, x_train)[:,0]
+        U3_xx = self.compute_gradients(U3_x, x_train)[:,0]
+        
+        U1_t = self.compute_gradients(U1, x_train)[:,1]
+        U2_t = self.compute_gradients(U2, x_train)[:,1]
+        U3_t = self.compute_gradients(U3, x_train)[:,1]
+
+        f1 = rho*u
+        f2 = rho * u**2 + p
+        f3 = u*(E + p)
+
+        f1_x = self.compute_gradients(f1, x_train)[:,0]
+        f2_x = self.compute_gradients(f2, x_train)[:,0]
+        f3_x = self.compute_gradients(f3, x_train)[:,0]
+        
+        self.lam = 1/(0.1*(torch.abs(u_x) - u_x) + 1)
+        #self.lam = torch.abs(u_x)
+
+        res1 = (U1_t + f1_x - self.mu * U1_xx)
+        r1 = torch.mean( res1**2)
+
+        res2 = (U2_t + f2_x - self.mu * U2_xx)
+        r2 = torch.mean( res2**2)
+
+        res3 = (U3_t + f3_x - self.mu * U3_xx)
+        r3 = torch.mean( res3**2)
+
+        return r1, r2, r3
+    
+    def _ic_loss(self, x_boundary, u_initial):
+        left = x_boundary[x_boundary[:,0] < 0.5]
+        right = x_boundary[x_boundary[:,0] > 0.5]
+        
+        left_rho=u_initial[0]*torch.ones_like(left[:,0]).reshape(-1,1)
+        left_p = u_initial[1]*torch.ones_like(left[:,0]).reshape(-1,1)
+        left_u = u_initial[2]*torch.ones_like(left[:,1]).reshape(-1,1)
+        
+        right_rho=u_initial[3]*torch.ones_like(right[:,0]).reshape(-1,1)
+        right_p = u_initial[4]*torch.ones_like(right[:,0]).reshape(-1,1)
+        right_u = u_initial[5]*torch.ones_like(right[:,1]).reshape(-1,1)
+        
+        output_left = self.model(left)
+        output_right = self.model(right)
+        
+        # Compute mean squared error loss for each predicted quantity
+        left_loss = (
+            torch.mean((output_left[:, 0] - left_rho) ** 2) +
+            torch.mean((output_left[:, 1] - left_p) ** 2) +
+            torch.mean((output_left[:, 2] - left_u) ** 2)
+        )
+        right_loss = (
+            torch.mean((output_right[:, 0] - right_rho) ** 2) +
+            torch.mean((output_right[:, 1] - right_p) ** 2) +
+            torch.mean((output_right[:, 2] - right_u) ** 2)
+        )
+
+        return left_loss , right_loss
+    
+    def train(self, x_physics, x_boundary, u_boundary,epochs=501, batch_size=8192):
+        train_dataset = TensorDataset(x_physics)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        self.adam_epochs = epochs
+        
+        
+        for epoch in range(epochs):
+            epoch_loss = 0.0
+            
+            lambda1 = lambda epoch: 10**(-(2/20000)*epoch)
+            scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=lambda1)
+            
+            for batch in train_loader:
+                x_batch = batch[0]
+                self.optimizer.zero_grad()
+                
+                r1, r2, r3 = self._physics_loss(x_batch)
+                physics_loss = r1 + r2 + r3
+                initial_loss = self._ic_loss(x_boundary, u_boundary)
+                
+                total_loss = (physics_loss + 10 * (initial_loss[0] + initial_loss[1])) + 0.1 * torch.mean(self.mu**2)
+                total_loss.backward()
+                self.optimizer.step()
+                
+                epoch_loss += total_loss.item()
+                
             scheduler.step()
             
-            loss_ = total.item()
-        if epoch%100==0:
+            if epoch % 10 == 0:
+                self.data["Epoch"].append(epoch)
+                self.data["Cont"].append(r1.item())
+                self.data["Mom_x"].append(r2.item())
+                self.data["Energy"].append(r3.item())
+                self.data["left"].append(initial_loss[0].item())
+                self.data["right"].append(initial_loss[1].item())
+                self.data["mu"].append(torch.mean(self.mu).item())
+                
+                with open('loss.json', 'w') as f:
+                    json.dump(self.data, f)
+                    
+                print(f"Epoch {epoch}, PDE Loss: {(r1 + r2+ r3).item():.4e}, "
+                      f"IC Loss: {(initial_loss[0] + initial_loss[1]).item():.4e}, "
+                      f"Total Loss: {epoch_loss:.4e}, "
+                      f"mu: {torch.mean(self.mu).item():.4e}")
+                
+            if epoch % 100==0:
+                torch.save(self.model.state_dict(), f'./results/model_adam.pth')
+                step_size_space=0.01
+                step_size_time=0.002
+                x = torch.arange(0, 1+step_size_space, step_size_space)
+                y = torch.arange(0, 0.2+step_size_time, step_size_time)
 
-            data["Epoch"].append(epoch)
-            data["Cont"].append(pde_list[0].item())
-            data["Mom_x"].append(pde_list[1].item())
-            data["Energy"].append(pde_list[2].item())
-            data["Initialleft"].append(mse_left.item())
-            data["Initialright"].append(mse_right.item())
-  
+                X, Y = torch.meshgrid(x, y, indexing='ij')
+                flat_X = X.flatten()
+                flat_Y = Y.flatten()
 
-            with open(filename, 'w') as f:
-                json.dump(data, f)
+                grid = torch.stack([flat_X, flat_Y], dim=1)
+                grid = torch.tensor(grid, dtype=torch.float32, device=device)
 
-            print(f"Epoch: {epoch}, Loss: {loss_:.4e}, PDE: {pde_mse.item()}")
-            
-        if epoch % 1000==0:
-            torch.save(model.state_dict(), f'./results/model_adam.pth')
-            step_size_space=0.01
-            step_size_time=0.002
-            x = torch.arange(Xmin, Xmax+step_size_space, step_size_space)
-            y = torch.arange(Tmin, Tmax+step_size_time, step_size_time)
+                #model.save_predictions(grid, './predict/predictions_{}.npy'.format(epoch))
+                self.model.save_predictions(grid, './predict/predictions1.npy')
+                self.model2.save_predictions(grid, './predict/predictions2.npy')
+                    
+    def train_lbfgs(self, x_physics, x_boundary, u_boundary, epochs=2001):
 
-            X, Y = torch.meshgrid(x, y, indexing='ij')
-            flat_X = X.flatten()
-            flat_Y = Y.flatten()
+        def closure():
+            self.optimizer2.zero_grad()
 
-            grid = torch.stack([flat_X, flat_Y], dim=1)
-            grid = torch.tensor(grid, dtype=torch.float32, device=device)
+            pde_loss = self._physics_loss(x_physics)
+            initial_loss = self._ic_loss(x_boundary, u_boundary)
 
-            #model.save_predictions(grid, './predict/predictions_{}.npy'.format(epoch))
-            model.save_predictions(grid, './predict/predictions.npy')
-            
-t0 = time.time()
-train(epochs=50001, lr =1e-03)
-total_time = (time.time()-t0)/60
-print(f'Total: {total_time} min')
+            total = ((pde_loss[0] + pde_loss[1] + pde_loss[2]) + 10 * (initial_loss[0] + initial_loss[1])) + 0.1 * torch.mean(self.mu**2)
+            total.backward()
+
+            return total
+
+        for epoch in range(epochs):
+            self.optimizer2.step(closure)
+
+            if epoch % 10 == 0:
+                total_loss = closure().item()
+                r1, r2, r3 = self._physics_loss(x_physics)
+                initial_loss = self._ic_loss(x_boundary, u_boundary)
+                self.data["Epoch"].append(epoch + self.adam_epochs )
+                self.data["Cont"].append(r1.item())
+                self.data["Mom_x"].append(r2.item())
+                self.data["Energy"].append(r3.item())
+                self.data["left"].append(initial_loss[0].item())
+                self.data["right"].append(initial_loss[1].item())
+                self.data["mu"].append(torch.mean(self.mu).item())
+                with open('loss.json', 'w') as f:
+                    json.dump(self.data, f)
+                    
+                print(f"Epoch {epoch}, PDE Loss: {(r1 + r2 + r3).item():.4e}, "
+                    f"IC Loss: {(initial_loss[0]+ initial_loss[1]).item():.4e}, "
+                    f"Total Loss: {total_loss:.4e}, "
+                    f"mu: {torch.mean(self.mu).item():.4e}")
+
+            if epoch % 100 == 0:
+                torch.save(self.model.state_dict(), f'./results/model_lbfgs.pth')
+
+                step_size_space = 0.01
+                step_size_time = 0.002
+                x = torch.arange(0, 1 + step_size_space, step_size_space)
+                y = torch.arange(0, 0.2 + step_size_time, step_size_time)
+
+                X, Y = torch.meshgrid(x, y, indexing='ij')
+                grid = torch.stack([X.flatten(), Y.flatten()], dim=1).to(device)
+
+                self.model.save_predictions(grid, f'./predict/predictions1.npy')
+                self.model2.save_predictions(grid, f'./predict/predictions2.npy')
+
+            # loss_ = total.item()
+        
+    
+    
+
+if __name__ == "__main__":
+
+    import numpy as np
+    import matplotlib.pyplot as plt    
+    
+    device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(device)
+
+    Xmin, Xmax = 0.0, 1.0
+    Tmin, Tmax = 0.0, 0.2
+
+    # r_left_inf = 1.0
+    # p_left_inf = 1.0
+    # u_left_inf = 0.0
+
+    # r_right_inf = 0.125
+    # p_right_inf = 0.1
+    # u_right_inf = 0.0
+    
+    u_initial = [1.0, 1.0, 0.0, 0.125, 0.1, 0.0]
+    
+
+    vertices = [(Xmin, Tmin), (Xmax, Tmin), (Xmax, Tmax), (Xmin, Tmax)]  
+    polygon = PolygonBoundaryPoints(vertices, num_boundary_points=2000)
+
+    boundary_points, edge_points_list = polygon.generate_points_on_edges()
+    interior_points = polygon.generate_random_points_inside(81920)
+    lbfgs_interior_points = polygon.generate_random_points_inside(40000)
+
+    inputs = torch.tensor(interior_points, dtype=torch.float32, device=device)
+    
+    layers=[2]+5*[192]+[3]
+    #layers=[2]+4*[256]+[3]
+    model = FNN(inputs, layers, init_type='xavier')
+    model.to(device)
+    layers2 = [2]+5*[96]+[1]
+    model2 = FNN(inputs, layers2, init_type='xavier', output2='non_exp')
+    model2.to(device)
+    
+    x_boundary = edge_points_list[0]
+    x_boundary = torch.tensor(x_boundary, dtype=torch.float32, device=device)
+    
+    u_initial = torch.tensor(u_initial, dtype=torch.float32, device=device)
+    
+    lbfgs_x_train = torch.tensor(lbfgs_interior_points, dtype=torch.float32, device=device)
+
+    pinn = PINN(model,model2, device=device)
+    pinn.train(x_physics=inputs, x_boundary=x_boundary, u_boundary=u_initial, epochs=2001)
+    pinn.train_lbfgs(x_physics=lbfgs_x_train, x_boundary=x_boundary, u_boundary=u_initial, epochs=401)
+    
+    
+    
+    
