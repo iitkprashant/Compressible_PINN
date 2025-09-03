@@ -454,11 +454,11 @@ if __name__ == "__main__":
 
     coordi = np.array([dat['X'], dat['Y']]).T
     
-    layers=[2]+5*[72]+[4]
+    layers=[2]+5*[96]+[4]
     #layers=[2]+4*[256]+[3]
     model = FNN(inputs, layers, init_type='xavier')
     model.to(device)
-    layers2 = [2]+4*[72]+[1]
+    layers2 = [2]+4*[96]+[1]
     model2 = FNN(inputs, layers2, init_type='xavier', output2='non_exp')
     
     model2.to(device)

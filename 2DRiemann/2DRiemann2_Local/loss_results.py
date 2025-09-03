@@ -44,13 +44,13 @@ axs = axs.flatten()
 # Plot each variable in separate subplots
 variables = [
     ("Continuity", data["Cont"], 'firebrick', '-', 'o'),
-    (r"Momentum ($x$)", data["Mom_x"], 'firebrick', '--', 's'),
-    (r"Momentum ($y$)", data["Mom_y"], 'firebrick', '--', 's'),
+    (r"Momentum ($x$)", data["MomX"], 'firebrick', '--', 's'),
+    (r"Momentum ($y$)", data["MomY"], 'firebrick', '--', 's'),
     ("Energy", data["Energy"], 'firebrick', '-.', '^'),
-    ("IC (LeftTop)", data["lefttop"], 'firebrick', '-', 'D'),
-    ("IC (LeftBottom)", data["leftbottom"], 'firebrick', '--', 'x'),
-    ("IC (RightTop)", data["righttop"], 'firebrick', '-', 'D'),
-    ("IC (RightBottom)", data["rightbottom"], 'firebrick', '--', 'x')
+    # ("IC (LeftTop)", data["lefttop"], 'firebrick', '-', 'D'),
+    # ("IC (LeftBottom)", data["leftbottom"], 'firebrick', '--', 'x'),
+    # ("IC (RightTop)", data["righttop"], 'firebrick', '-', 'D'),
+    # ("IC (RightBottom)", data["rightbottom"], 'firebrick', '--', 'x')
 ]
 
 for i, (label, values, color, linestyle, marker) in enumerate(variables):
@@ -76,8 +76,8 @@ fig, axs = plt.subplots(1, 4, figsize=(16, 5), constrained_layout=True)
 # Variables for PDE-related losses
 pde_variables = [
     ("Continuity", data["Cont"], 'firebrick', '-', 'o'),
-    (r"Momentum ($x$)", data["Mom_x"], 'firebrick', '--', 's'),
-    (r"Momentum ($y$)", data["Mom_y"], 'firebrick', '--', 's'),
+    (r"Momentum ($x$)", data["MomX"], 'firebrick', '--', 's'),
+    (r"Momentum ($y$)", data["MomY"], 'firebrick', '--', 's'),
     ("Energy", data["Energy"], 'firebrick', '-.', '^'),
 ]
 
@@ -98,32 +98,32 @@ for i, (label, values, color, linestyle, marker) in enumerate(pde_variables):
 plt.savefig('pde_losses.png', dpi=300, bbox_inches='tight')
 plt.show()
 
-# Initial condition loss plots
-fig, axs = plt.subplots(1, 4, figsize=(14, 5), constrained_layout=True)
+# # Initial condition loss plots
+# fig, axs = plt.subplots(1, 4, figsize=(14, 5), constrained_layout=True)
 
-# Variables for initial condition losses
-ic_variables = [
-    ("IC (LeftTop)", data["lefttop"], 'firebrick', '-', 'D'),
-    ("IC (LeftBottom)", data["leftbottom"], 'firebrick', '--', 'x'),
-    ("IC (RightTop)", data["righttop"], 'firebrick', '-', 'D'),
-    ("IC (RightBottom)", data["rightbottom"], 'firebrick', '--', 'x')
-]
+# # Variables for initial condition losses
+# ic_variables = [
+#     ("IC (LeftTop)", data["lefttop"], 'firebrick', '-', 'D'),
+#     ("IC (LeftBottom)", data["leftbottom"], 'firebrick', '--', 'x'),
+#     ("IC (RightTop)", data["righttop"], 'firebrick', '-', 'D'),
+#     ("IC (RightBottom)", data["rightbottom"], 'firebrick', '--', 'x')
+# ]
 
-# Plot each IC loss variable
-for i, (label, values, color, linestyle, marker) in enumerate(ic_variables):
-    axs[i].plot(data["Epoch"], values, label=label, 
-                linestyle=linestyle, marker=marker, markersize=2, linewidth=1.5, color=color)
-    axs[i].set_yscale('log')
-    axs[i].set_xlabel('Epochs', fontsize=18)
-    axs[i].set_ylabel('Loss', fontsize=18)
-    # axs[i].set_title(label, fontsize=12, weight='bold')
-    axs[i].grid(alpha=0.3)
-    axs[i].legend(fontsize=15, loc='best')
-    if i>0:
-        axs[i].set_ylabel('')
-# Save the figure for IC losses
-plt.savefig('ic_losses.png', dpi=300, bbox_inches='tight')
-plt.show()
+# # Plot each IC loss variable
+# for i, (label, values, color, linestyle, marker) in enumerate(ic_variables):
+#     axs[i].plot(data["Epoch"], values, label=label, 
+#                 linestyle=linestyle, marker=marker, markersize=2, linewidth=1.5, color=color)
+#     axs[i].set_yscale('log')
+#     axs[i].set_xlabel('Epochs', fontsize=18)
+#     axs[i].set_ylabel('Loss', fontsize=18)
+#     # axs[i].set_title(label, fontsize=12, weight='bold')
+#     axs[i].grid(alpha=0.3)
+#     axs[i].legend(fontsize=15, loc='best')
+#     if i>0:
+#         axs[i].set_ylabel('')
+# # Save the figure for IC losses
+# plt.savefig('ic_losses.png', dpi=300, bbox_inches='tight')
+# plt.show()
 
 # print(data["Cont"][300])
 # print(data["Mom_x"][300])
