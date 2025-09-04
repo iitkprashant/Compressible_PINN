@@ -122,11 +122,11 @@ Navigate to either the Expansion or Compression directories and run the scripts 
 
 If you use this code in your research, please cite:
 ```bibtex
-@article{PINN_Euler_Artificial_Viscosity,
+@article{kumar2025shocks,
   title = {A Robust Data-Free Physics-Informed Neural Network for Compressible Flows with Shocks}},
   author = {Prashant Kumar and Rajesh Ranjan},
   year = {2025},
-  url = {under-review},
+  journal = {under-review}
 }
 ```
 
