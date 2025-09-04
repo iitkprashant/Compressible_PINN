@@ -1,6 +1,6 @@
-# Physics-Informed Neural Networks for Euler Equations with Artificial Viscosity
+# Physics-Informed Neural Networks for Compressible Flows for Shocks.
 
-This repository implements Physics-Informed Neural Networks (PINNs) for solving the Euler equations with global and local artificial viscosity models. It includes benchmark problems in 1D and 2D, including Riemann problems and corner flows.
+This repository implements Physics-Informed Neural Networks (PINNs) for solving the Compressible Euler equations with learnable global and local artificial viscosity models. It includes benchmark problems in 1D and 2D, including Riemann problems and corner flows.
 
 ## 📂 Repository Structure
 
@@ -118,19 +118,17 @@ Navigate to any of the 2D Riemann problem directories and run the same set of co
 ### Corner Flows
 Navigate to either the Expansion or Compression directories and run the scripts for global or local viscosity models.
 
-## 📌 Problem Setup
+## 📖 Citation
 
-### 1D Riemann Problems
-- **LST (Lax-Shock Tube)**: Classical shock tube problem with specified initial conditions
-- **SST (Sod-Shock Tube)**: Another common shock tube configuration
-
-### 2D Riemann Problems
-Three different configurations of 2D Riemann problems with varying initial conditions.
-
-### Corner Flows
-- **Expansion Flow**: Flow expansion around a corner
-- **Compression Flow**: Flow compression around a corner
-
+If you use this code in your research, please cite:
+```bibtex
+@software{PINN_Euler_Artificial_Viscosity,
+  title = {A Robust Data-Free Physics-Informed Neural Network for Compressible Flows with Shocks}},
+  author = {Prashant Kumar and Rajesh Ranjan},
+  year = {2025},
+  url = {under-review},
+}
+```
 
 ## 📄 License
 
