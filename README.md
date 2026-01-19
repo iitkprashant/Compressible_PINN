@@ -125,8 +125,10 @@ If you use this code in your research, please cite:
 @article{kumar2025shocks,
   title = {A Robust Data-Free Physics-Informed Neural Network for Compressible Flows with Shocks}},
   author = {Prashant Kumar and Rajesh Ranjan},
-  year = {2025},
-  journal = {under-review}
+  doi = {https://doi.org/10.1016/j.compfluid.2026.106975},
+  url = {https://www.sciencedirect.com/science/article/pii/S0045793026000174},
+  year = {2026},
+  journal = {Computer & Fluids}
 }
 ```
 
