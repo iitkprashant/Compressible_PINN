@@ -122,7 +122,7 @@ Navigate to either the Expansion or Compression directories and run the scripts 
 
 If you use this code in your research, please cite:
 ```bibtex
-@article{kumar2025shocks,
+@article{kumar2026shocks,
   title = {A Robust Data-Free Physics-Informed Neural Network for Compressible Flows with Shocks}},
   author = {Prashant Kumar and Rajesh Ranjan},
   doi = {https://doi.org/10.1016/j.compfluid.2026.106975},
